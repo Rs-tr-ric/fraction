@@ -1,11 +1,41 @@
-// Copyright (c) 2025 Richard Sun
-// Licensed under the MIT License (https://opensource.org/licenses/MIT)
+//! # fraction
+//!
+//! 提供高精度分数运算，支持特殊值处理和自动化简
+//! 
+//! # 核心功能
+//! - 基本四则运算 (`+`, `-`, `*`, `/` 等)
+//! - 与原生类型的[安全转换](crate::conversion)
+//! - 特殊值处理 (INFINITY, NAN 等)
+//! - 在结果溢出时候使用 shrink 将结果转化为范围内的最接近结果的最简分数
 
 use std::{
     cmp::Ordering, fmt::{self, Display, Formatter}, hash::{Hash, Hasher}, i32, ops::{
         Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Rem, Sub, SubAssign 
     }
 };
+
+/// 分数类型，使用 `i32` 存储分子分母
+///
+/// 维护最简分数形式，支持与基本数值类型的互操作
+/// 
+/// # 示例 - 基础使用
+/// ```
+/// use fraction::Fraction;
+///
+/// let a = Fraction::new(3, 4); // 3/4
+/// let b = Fraction::from(2);    // 2/1
+/// assert_eq!(a + b, Fraction::new(11, 4));
+/// ```
+///
+/// # 特殊值处理
+/// ```
+/// # use fraction::{Fraction, ConversionError};
+/// let inf = Fraction::INFINITY;
+/// let nan = Fraction::NAN;
+///
+/// assert!(inf > Fraction::from(1000));
+/// assert!(nan != nan); // NaN 不满足自反性
+/// ```
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Type {
@@ -16,14 +46,14 @@ enum Type {
     NaN
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ConversionError {
     OutOfRangeError, 
     NaNConversion, 
     InfiniteConversion, 
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Eq)]
 pub struct Fraction {
     nume: i32,
     deno: i32, 
@@ -42,7 +72,25 @@ impl Fraction {
 
     const LIMITER: u64 = i32::MAX as u64;
 
-    // new
+    /// 创建新分数，自动化简为最简形式
+    ///
+    /// # 参数
+    /// - `numerator`: 分子  
+    /// - `denominator`: 分母 (非零)
+    ///
+    /// # Panics
+    /// 当分母为零时触发 panic
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let normal = Fraction::new(4, -2); // -2/1
+    /// assert_eq!(normal, Fraction::from(-2));
+    /// 
+    /// let inf = Fraction::new(1, 0); // inf
+    /// assert_eq!(inf, Fraction::INFINITY);
+    /// ```
     pub fn new(nume: i32, deno: i32) -> Self {
         let frac_type = Self::determine_frac_type(nume, deno);
         match frac_type {
@@ -67,7 +115,6 @@ impl Fraction {
         }
     }
 
-    // determine num type
     fn determine_frac_type(nume: i32, deno: i32) -> Type {
         if deno == 0 { 
             match nume.signum() {
@@ -155,6 +202,29 @@ impl Fraction {
         if d_1 * deno_2 as i128 <= d_2 * deno_1 as i128 { (nume_1 as u32, deno_1 as u32) } else { (nume_2 as u32, deno_2 as u32) }
     }
 
+    /// 获取符号
+    ///
+    /// # 返回值
+    /// `Self`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert_eq!(a1.sign(), Fraction::from(1));
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert_eq!(a2.sign(), Fraction::from(-1));
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(zero.sign().is_zero());
+    /// let nan = Fraction::NAN;
+    /// assert!(nan.sign().is_nan());
+    /// let inf = Fraction::INFINITY;
+    /// assert_eq!(inf.sign(), Fraction::from(1));
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert_eq!(neg_inf.sign(), Fraction::from(-1));
+    /// ```
     pub fn sign(&self) -> Self {
         match self.frac_type {
             Type::NaN => Self::NAN,
@@ -191,6 +261,29 @@ impl Fraction {
         }
     }
 
+    /// 正值返回 true，否则返回 false
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert!(a1.is_positive());
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert!(!a2.is_positive());
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(!zero.is_positive());
+    /// let nan = Fraction::NAN;
+    /// assert!(!nan.is_positive());
+    /// let inf = Fraction::INFINITY;
+    /// assert!(inf.is_positive());
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(!neg_inf.is_positive());
+    /// ```
     pub fn is_positive(&self) -> bool {
         match self.frac_type {
             Type::NegInfinity | Type::NaN | Type::Zero => false, 
@@ -199,6 +292,29 @@ impl Fraction {
         }
     }
 
+    /// 负值返回 true，否则返回 false
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert!(!a1.is_negative());
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert!(a2.is_negative());
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(!zero.is_negative());
+    /// let nan = Fraction::NAN;
+    /// assert!(!nan.is_negative());
+    /// let inf = Fraction::INFINITY;
+    /// assert!(!inf.is_negative());
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(neg_inf.is_negative());
+    /// ```
     pub fn is_negative(&self) -> bool {
         match self.frac_type {
             Type::Infinity | Type::NaN | Type::Zero => false, 
@@ -207,26 +323,156 @@ impl Fraction {
         }
     }
 
+    /// 零值返回 true，否则返回 false
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert!(!a1.is_zero());
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert!(!a2.is_zero());
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(zero.is_zero());
+    /// let nan = Fraction::NAN;
+    /// assert!(!nan.is_zero());
+    /// let inf = Fraction::INFINITY;
+    /// assert!(!inf.is_zero());
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(!neg_inf.is_zero());
+    /// ```
     pub fn is_zero(&self) -> bool {
         self.frac_type == Type::Zero
     }
 
+    /// 正无穷返回 true，否则返回 false
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert!(!a1.is_infinity());
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert!(!a2.is_infinity());
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(!zero.is_infinity());
+    /// let nan = Fraction::NAN;
+    /// assert!(!nan.is_infinity());
+    /// let inf = Fraction::INFINITY;
+    /// assert!(inf.is_infinity());
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(!neg_inf.is_infinity());
+    /// ```
     pub fn is_infinity(&self) -> bool {
         self.frac_type == Type::Infinity
     }
 
+    /// 负无穷返回 true，否则返回 false
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert!(!a1.is_neg_infinity());
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert!(!a2.is_neg_infinity());
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(!zero.is_neg_infinity());
+    /// let nan = Fraction::NAN;
+    /// assert!(!nan.is_neg_infinity());
+    /// let inf = Fraction::INFINITY;
+    /// assert!(!inf.is_neg_infinity());
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(neg_inf.is_neg_infinity());
+    /// ```
     pub fn is_neg_infinity(&self) -> bool {
         self.frac_type == Type::NegInfinity
     }
 
+    /// NaN 值返回 true，否则返回 false
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert!(!a1.is_nan());
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert!(!a2.is_nan());
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(!zero.is_nan());
+    /// let nan = Fraction::NAN;
+    /// assert!(nan.is_nan());
+    /// let inf = Fraction::INFINITY;
+    /// assert!(!inf.is_nan());
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(!neg_inf.is_nan());
+    /// ```
     pub fn is_nan(&self) -> bool {
         self.frac_type == Type::NaN
     }
 
+    /// 非特数值（不包括零值）返回 true，否则返回 false
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// assert!(a1.is_normal());
+    /// let a2 = Fraction::new(-2, 3);
+    /// assert!(a2.is_normal());
+    ///
+    /// let zero = Fraction::ZERO;
+    /// assert!(!zero.is_normal());
+    /// let nan = Fraction::NAN;
+    /// assert!(!nan.is_normal());
+    /// let inf = Fraction::INFINITY;
+    /// assert!(!inf.is_normal());
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(!neg_inf.is_normal());
+    /// ```
     pub fn is_normal(&self) -> bool {
         self.frac_type == Type::Normal
     }
 
+    /// 获取绝对值，保持特殊值语义
+    ///
+    /// # 返回值
+    /// `Self`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a = Fraction::new(-2, 3);
+    /// assert_eq!(a.abs(), Fraction::new(2, 3));
+    ///
+    /// let inf = Fraction::INFINITY;
+    /// assert_eq!(inf.abs(), Fraction::INFINITY);
+    /// ```
     pub fn abs(&self) -> Self {
         match self.frac_type {
             Type::NegInfinity | Type::Infinity => Self::INFINITY, 
@@ -240,6 +486,21 @@ impl Fraction {
         }
     }
 
+    /// 获取倒数，保持特殊值语义
+    ///
+    /// # 返回值
+    /// `Self`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a = Fraction::new(2, 3);
+    /// assert_eq!(a.reciprocal(), Fraction::new(3, 2));
+    ///
+    /// let inf = Fraction::INFINITY;
+    /// assert!(inf.reciprocal().is_zero());
+    /// ```
     pub fn reciprocal(&self) -> Self {
         match self.frac_type {
             Type::Infinity => Self::ZERO, 
@@ -315,7 +576,7 @@ impl Fraction {
             (Type::Normal, Type::Infinity) | (Type::Infinity, Type::Normal) => 
                 if self.is_negative() ^ rhs.is_negative() { Type::NegInfinity } else { Type::Infinity },
             (Type::Normal, Type::NegInfinity) | (Type::NegInfinity, Type::Normal) => 
-                if self.is_negative() ^ rhs.is_negative() { Type::Infinity } else { Type::NegInfinity }, 
+                if self.is_negative() ^ rhs.is_negative() { Type::NegInfinity } else { Type::Infinity },
 
             // normal * normal
             (Type::Normal, Type::Normal) => Type::Normal
@@ -345,6 +606,25 @@ impl Fraction {
 impl<T: Into<Fraction>> Add<T> for Fraction {
     type Output = Self;
 
+    /// 分数加法，自动处理特殊值
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// let a = Fraction::new(1, 2);
+    /// let b = Fraction::new(1, 3);
+    /// assert_eq!(a + b, Fraction::new(5, 6));
+    /// assert_eq!(a + 1, Fraction::new(3, 2));
+    /// 
+    /// let inf = Fraction::INFINITY;
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// let nan = Fraction::NAN; 
+    /// let zero = Fraction::ZERO;
+    /// assert!((inf + neg_inf).is_nan());
+    /// assert!((inf + inf).is_infinity());
+    /// assert!((a + neg_inf).is_neg_infinity());
+    /// assert!((a + nan).is_nan());
+    /// ```
     fn add(self, rhs: T) -> Self::Output {
         let rhs: Self = rhs.into();
         let add_type = self.get_add_type(rhs);
@@ -367,6 +647,26 @@ impl<T: Into<Fraction>> Add<T> for Fraction {
 
 impl<T: Into<Fraction>> Sub<T> for Fraction {
     type Output = Self;
+
+    /// 分数减法，自动处理特殊值
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// let a = Fraction::new(1, 2);
+    /// let b = Fraction::new(1, 3);
+    /// assert_eq!(a - b, Fraction::new(1, 6));
+    /// assert_eq!(a - 1, Fraction::new(-1, 2));
+    /// 
+    /// let inf = Fraction::INFINITY;
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// let nan = Fraction::NAN; 
+    /// let zero = Fraction::ZERO;
+    /// assert!((inf - inf).is_nan());
+    /// assert!((inf - neg_inf).is_infinity());
+    /// assert!((a - inf).is_neg_infinity());
+    /// assert!((a - nan).is_nan());
+    /// ```
     fn sub(self, rhs: T) -> Self::Output {
         let rhs: Self = -rhs.into();
         self + rhs
@@ -375,6 +675,26 @@ impl<T: Into<Fraction>> Sub<T> for Fraction {
 
 impl<T: Into<Fraction>> Mul<T> for Fraction {
     type Output = Self;
+
+    /// 分数乘法，自动处理特殊值
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// let a = Fraction::new(1, 2);
+    /// let b = Fraction::new(1, 3);
+    /// assert_eq!(a * b, Fraction::new(1, 6));
+    /// assert_eq!(a * 3, Fraction::new(3, 2));
+    /// 
+    /// let inf = Fraction::INFINITY;
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// let nan = Fraction::NAN; 
+    /// let zero = Fraction::ZERO;
+    /// assert!((inf * neg_inf).is_neg_infinity());
+    /// assert!((inf * zero).is_nan());
+    /// assert!((a * neg_inf).is_neg_infinity());
+    /// assert!((a * nan).is_nan());
+    /// ```
     fn mul(self, rhs: T) -> Self::Output {
         let rhs: Self = rhs.into();
         let add_type = self.get_mul_type(rhs);
@@ -397,6 +717,26 @@ impl<T: Into<Fraction>> Mul<T> for Fraction {
 
 impl<T: Into<Fraction>> Div<T> for Fraction {
     type Output = Self;
+
+    /// 分数除法，自动处理特殊值
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// let a = Fraction::new(1, 2);
+    /// let b = Fraction::new(1, 3);
+    /// assert_eq!(a / b, Fraction::new(3, 2));
+    /// assert_eq!(a / 3, Fraction::new(1, 6));
+    /// 
+    /// let inf = Fraction::INFINITY;
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// let nan = Fraction::NAN; 
+    /// let zero = Fraction::ZERO;
+    /// assert!((inf / neg_inf).is_nan());
+    /// assert!((inf / zero).is_infinity());
+    /// assert!((a / neg_inf).is_zero());
+    /// assert!((a / nan).is_nan());
+    /// ```
     fn div(self, rhs: T) -> Self::Output {
         let rhs: Self = rhs.into().reciprocal();
         self * rhs
@@ -404,6 +744,20 @@ impl<T: Into<Fraction>> Div<T> for Fraction {
 }
 
 impl<T: Into<Fraction>> AddAssign<T> for Fraction {
+    /// 实现 `+=` 操作
+    /// 
+    /// 在数值上与 `+` 的行为相同
+    /// 
+    /// # 示例
+    /// ```rust
+    /// # use fraction::Fraction;
+    /// let mut a = Fraction::new(1, 2);
+    /// let mut b = Fraction::new(1, 3);
+    /// a += b;
+    /// b += 3;
+    /// assert_eq!(a, Fraction::new(5, 6));
+    /// assert_eq!(b, Fraction::new(10, 3));
+    /// ```
     fn add_assign(&mut self, rhs: T) {
         let rhs: Self = rhs.into();
         let add_type = self.get_add_type(rhs);
@@ -421,6 +775,20 @@ impl<T: Into<Fraction>> AddAssign<T> for Fraction {
 }
 
 impl<T: Into<Fraction>> SubAssign<T> for Fraction {
+    /// 实现 `-=` 操作
+    /// 
+    /// 在数值上与 `-` 的行为相同
+    /// 
+    /// # 示例
+    /// ```rust
+    /// # use fraction::Fraction;
+    /// let mut a = Fraction::new(1, 2);
+    /// let mut b = Fraction::new(1, 3);
+    /// a -= b;
+    /// b -= 3;
+    /// assert_eq!(a, Fraction::new(1, 6));
+    /// assert_eq!(b, Fraction::new(-8, 3));
+    /// ```
     fn sub_assign(&mut self, rhs: T) {
         let rhs: Self = rhs.into();
         *self += -rhs;
@@ -428,6 +796,20 @@ impl<T: Into<Fraction>> SubAssign<T> for Fraction {
 }
 
 impl<T: Into<Fraction>> MulAssign<T> for Fraction {
+    /// 实现 `*=` 操作
+    /// 
+    /// 在数值上与 `*` 的行为相同
+    /// 
+    /// # 示例
+    /// ```rust
+    /// # use fraction::Fraction;
+    /// let mut a = Fraction::new(1, 2);
+    /// let mut b = Fraction::new(1, 3);
+    /// a *= b;
+    /// b *= 3;
+    /// assert_eq!(a, Fraction::new(1, 6));
+    /// assert_eq!(b, Fraction::from(1));
+    /// ```
     fn mul_assign(&mut self, rhs: T) {
         let rhs: Self = rhs.into();
         let add_type = self.get_add_type(rhs);
@@ -445,6 +827,20 @@ impl<T: Into<Fraction>> MulAssign<T> for Fraction {
 }
 
 impl<T: Into<Fraction>> DivAssign<T> for Fraction {
+    /// 实现 `/=` 操作
+    /// 
+    /// 在数值上与 `/` 的行为相同
+    /// 
+    /// # 示例
+    /// ```rust
+    /// # use fraction::Fraction;
+    /// let mut a = Fraction::new(1, 2);
+    /// let mut b = Fraction::new(1, 3);
+    /// a /= b;
+    /// b /= 3;
+    /// assert_eq!(a, Fraction::new(3, 2));
+    /// assert_eq!(b, Fraction::new(1, 9));
+    /// ```
     fn div_assign(&mut self, rhs: T) {
         let rhs: Self = rhs.into();
         *self *= rhs.reciprocal();
@@ -454,6 +850,23 @@ impl<T: Into<Fraction>> DivAssign<T> for Fraction {
 impl Neg for Fraction {
     type Output = Self;
 
+    /// 取反，自动处理特殊值
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// let a = Fraction::new(1, 2);
+    /// assert_eq!(-a, Fraction::new(-1, 2));
+    /// 
+    /// let inf = Fraction::INFINITY;
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// let nan = Fraction::NAN; 
+    /// let zero = Fraction::ZERO;
+    /// assert!((-nan).is_nan());
+    /// assert!((-inf).is_neg_infinity());
+    /// assert!((-neg_inf).is_infinity());
+    /// assert!((-zero).is_zero());
+    /// ```
     fn neg(self) -> Self::Output {
         match self.frac_type {
             Type::Infinity => Self::NEG_INFINITY, 
@@ -472,6 +885,25 @@ impl Neg for Fraction {
 }
 
 impl Display for Fraction {
+    /// 格式化输出
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// let a = Fraction::new(1, 2);
+    /// let b = Fraction::new(1, -2);
+    /// assert_eq!(a.to_string(), "1/2");
+    /// assert_eq!(b.to_string(), "-1/2");
+    /// 
+    /// let inf = Fraction::INFINITY;
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// let nan = Fraction::NAN; 
+    /// let zero = Fraction::ZERO;
+    /// assert_eq!(inf.to_string(), "inf");
+    /// assert_eq!(neg_inf.to_string(), "-inf");
+    /// assert_eq!(nan.to_string(), "nan");
+    /// assert_eq!(zero.to_string(), "0");
+    /// ```
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self.frac_type {
             Type::Infinity => write!(f, "inf"), 
@@ -487,7 +919,84 @@ impl Display for Fraction {
     }
 }
 
+impl PartialEq for Fraction {
+    /// 判断是否相等
+    /// 
+    /// 比较逻辑处理以下特殊值：
+    /// - 无穷大（`INFINITY`/`NEG_INFINITY`）
+    /// - NaN
+    /// - 零
+    /// - 普通分数
+    ///
+    /// # 取等规则
+    /// 1. **NaN 参与比较**：任意操作数为 NaN 时返回 `false`
+    /// 2. **特殊值比较**：非 NaN 的特殊值仅与自身下相等
+    /// 3. **普通分数比较**：直接判断分数的分子分母是否全部相等
+    ///
+    /// # 返回值
+    /// `bool`
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// 
+    /// let a1 = Fraction::new(2, 3);
+    /// let a2 = Fraction::new(-4, -6);
+    /// assert!(a1 == a2);
+    ///
+    /// let zero = Fraction::ZERO;
+    /// let nan = Fraction::NAN;
+    /// let inf = Fraction::INFINITY;
+    /// let neg_inf = Fraction::NEG_INFINITY;
+    /// assert!(zero != a1);
+    /// assert!(nan != nan);
+    /// ```
+    fn eq(&self, other: &Self) -> bool {
+        match (self.frac_type, other.frac_type) {
+            (Type::NaN, _) | (_, Type::NaN) => false, 
+            (_, _) => self.frac_type == self.frac_type && self.nume == other.nume && self.deno == other.deno
+        }
+    }
+}
+
 impl PartialOrd for Fraction {
+    /// 实现分数的比较运算，遵循扩展实数系统的规则
+    ///
+    /// 比较逻辑处理以下特殊值：
+    /// - 无穷大（`INFINITY`/`NEG_INFINITY`）
+    /// - NaN
+    /// - 零
+    /// - 普通分数
+    ///
+    /// # 比较规则
+    /// 1. **NaN 参与比较**：任意操作数为 NaN 时返回 `None`
+    /// 2. **无穷大比较**：
+    ///    - `INFINITY` 大于所有非 NaN 值（包括自身相等性）
+    ///    - `NEG_INFINITY` 小于所有非 NaN 值（包括自身相等性）
+    /// 3. **普通分数比较**：使用交叉相乘算法避免精度损失
+    ///
+    /// # 返回值
+    /// 返回 `Option<Ordering>`：
+    /// - `Some(Ordering::Greater)`：当前值大于比较值
+    /// - `Some(Ordering::Less)`：当前值小于比较值
+    /// - `Some(Ordering::Equal)`：数学相等
+    /// - `None`：存在 NaN 无法比较
+    ///
+    /// # 示例
+    /// ```
+    /// # use fraction::Fraction;
+    /// # use std::cmp::Ordering;
+    ///
+    /// let a = Fraction::new(3, 4);
+    /// let b = Fraction::new(2, 3);
+    /// assert_eq!(a.partial_cmp(&b), Some(Ordering::Greater));
+    /// 
+    /// let inf = Fraction::INFINITY;
+    /// let zero = Fraction::ZERO;
+    /// let nan = Fraction::NAN;
+    /// assert_eq!(inf.partial_cmp(&zero), Some(Ordering::Greater));
+    /// assert_eq!(nan.partial_cmp(&a), None);
+    /// ```
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self.frac_type, other.frac_type) {
             (Type::NaN, _) | (_, Type::NaN) => None, 
@@ -520,7 +1029,6 @@ impl PartialOrd for Fraction {
 //         self.partial_cmp(other).unwrap()
 //     }
 // }
-
 
 macro_rules! impl_from_safe {
     ($($t:ty),*) => {

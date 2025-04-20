@@ -1,1 +1,3 @@
-pub mod fraction;
+mod fraction;
+
+pub use fraction::{Fraction, ConversionError};

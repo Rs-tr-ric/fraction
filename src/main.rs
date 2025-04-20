@@ -1,8 +1,7 @@
 mod fraction;
 
-use fraction::Fraction;
-
 fn main() {
+    use fraction::Fraction;
     // let a = Fraction::new(50i32, 10i32);
     // let b = Fraction::new(-50i32, 17i32);
     // let c = Fraction::new(0, 1);
@@ -47,17 +46,44 @@ fn main() {
     // println!("{}", ((n / prev) + prev) / 2);
     // let n = Fraction::from(i32::MAX - 2);
     // let s = sqrt_fraction(n);
+
+    fn sqrt(n: Fraction) -> Option<Fraction> {
+        let mut prev;
+        let mut curr;
+
+        if n.is_negative() {
+            return None;
+        } else if n.is_zero() {
+            return Some(Fraction::ZERO);
+        } else if (n - 1).is_positive() {
+            prev = (n + 1) / 2;
+        } else {
+            prev = Fraction::from(1);
+        }
+
+        curr = (n / prev + prev) / 2;
+        for _ in 0..20 {
+            if curr - prev == Fraction::ZERO {
+                println!("{} {}", curr, prev);
+                return Some(curr);
+            }
+            prev = curr;
+            curr = (n / prev + prev) / 2;
+        }
+        Some(curr)
+    }
+    
+    sqrt(Fraction::from(39));
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::Fraction;
+    use crate::fraction::{Fraction, ConversionError};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use rand;
-        
 
-    fn sqrt_fraction(n: Fraction) -> Option<Fraction> {
+    pub fn sqrt_fraction(n: Fraction) -> Option<Fraction> {
         let mut prev;
         let mut curr;
         let zero = Fraction::from(0);
@@ -209,5 +235,61 @@ mod tests {
             let sqrt = sqrt_fraction(Fraction::new(m, n)).unwrap();
             assert!((f64::from(sqrt) - (m as f64 / n as f64).sqrt()).abs() <= range);
         }
+    }
+
+    #[test]
+    fn test_document_in_readme() {
+        // safe
+        let f64_val: f64 = Fraction::new(-5, 4).into();
+        assert_eq!(f64_val, -1.25);
+        let f64_inf: f64 = f64::from(Fraction::INFINITY);
+        assert_eq!(f64_inf, f64::INFINITY);
+        // unsafe
+        let res_err: Result<i32, _> = Fraction::INFINITY.try_into();
+        assert_eq!(res_err, Err(ConversionError::InfiniteConversion));
+        let res_ok: Result<i32, _> = i32::try_from(Fraction::new(-3, 2));
+        assert_eq!(res_ok, Ok(-1));
+
+        // shrink
+        let n = Fraction::new(2147483647, 4);
+        let prev = (n + 1) / 2;
+        let curr = (n / prev + prev) / 2;
+        
+        // shrink to 805306375/6 (= 134217729.16666666)
+        // not 4611686065672028153/34359738416 (= 134217729.1875)
+        assert_eq!(curr, Fraction::new(805306375, 6));
+        
+        // sqrt
+        fn sqrt(n: Fraction) -> Option<Fraction> {
+            let mut prev;
+            let mut curr;
+
+            if n.is_negative() {
+                return None;
+            } else if n.is_zero() {
+                return Some(Fraction::ZERO);
+            } else if (n - 1).is_positive() {
+                prev = (n + 1) / 2;
+            } else {
+                prev = Fraction::from(1);
+            }
+
+            curr = (n / prev + prev) / 2;
+            for _ in 0..20 {
+                if curr - prev == Fraction::ZERO {
+                    return Some(curr);
+                }
+                prev = curr;
+                curr = (n / prev + prev) / 2;
+            }
+            Some(curr)
+        }
+
+        assert_eq!(sqrt(Fraction::from(100)).unwrap(), Fraction::from(10));
+
+        let a = Fraction::new(155937625, 24970004);   // 6.244997998398398
+        let b = Fraction::new(2103597937, 336845254); // 6.244997998398398
+        assert!(a != b);
+        assert!(a - b == Fraction::ZERO);
     }
 }

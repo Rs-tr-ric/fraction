@@ -35,6 +35,7 @@ assert_eq!(res_ok, Ok(-1));
 #### ✅ 安全特性
 - **Shrink**​​：运算溢出时自动寻找最简近似解
 ```rust
+// shrink
 let n = Fraction::new(2147483647, 4);
 let prev = (n + 1) / 2;
 let curr = (n / prev + prev) / 2;
@@ -56,15 +57,14 @@ assert_eq!(curr, Fraction::new(805306375, 6));
 let a = Fraction::new(155937625, 24970004);   // 6.244997998398398
 let b = Fraction::new(2103597937, 336845254); // 6.244997998398398
 assert!(a != b);
-assert_eq!(a - b, Fraction::ZERO);
+assert!(a - b == Fraction::ZERO);
 ```
 - **​​哈希兼容​​**：
   - 已实现哈希特质，可直接用于HashMap等数据结构
 
 ### 示例代码（算术平方根）
 ```rust
-use fraction::Fraction;
-        
+// sqrt
 fn sqrt(n: Fraction) -> Option<Fraction> {
     let mut prev;
     let mut curr;
@@ -80,16 +80,14 @@ fn sqrt(n: Fraction) -> Option<Fraction> {
     }
 
     curr = (n / prev + prev) / 2;
-    for _ in 0..20 {
+    loop {
         if curr - prev == Fraction::ZERO {
             return Some(curr);
         }
         prev = curr;
         curr = (n / prev + prev) / 2;
     }
-    Some(curr)
 }
 
 assert_eq!(sqrt(Fraction::from(100)).unwrap(), Fraction::from(10));
 ```
-

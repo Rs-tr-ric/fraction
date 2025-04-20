@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use fraction::fraction::Fraction;
+use fraction::Fraction;
 use rand;
 
 fn sqrt_fraction(n: Fraction) -> Option<Fraction> {
@@ -16,14 +16,13 @@ fn sqrt_fraction(n: Fraction) -> Option<Fraction> {
     }
 
     curr = (n / prev + prev) / 2;
-    for _ in 0..21 {
+    loop {
         if curr - prev == Fraction::ZERO {
-            break;
+            return Some(curr);
         }
         prev = curr;
         curr = (n / prev + prev) / 2;
     }
-    Some(curr)
 }
 
 fn sqrt_f64(n: f64) -> Option<f64> {
@@ -40,7 +39,7 @@ fn sqrt_f64(n: f64) -> Option<f64> {
     loop {
         curr = (n / prev + prev) / 2.0;
         if (curr - prev).abs() < 1e-16 {
-            break Some(curr);
+            return Some(curr);
         }
         prev = curr;
     }

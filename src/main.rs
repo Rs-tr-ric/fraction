@@ -62,7 +62,7 @@ fn main() {
         }
 
         curr = (n / prev + prev) / 2;
-        for _ in 0..20 {
+        loop {
             if curr - prev == Fraction::ZERO {
                 println!("{} {}", curr, prev);
                 return Some(curr);
@@ -70,7 +70,6 @@ fn main() {
             prev = curr;
             curr = (n / prev + prev) / 2;
         }
-        Some(curr)
     }
     
     sqrt(Fraction::from(39));
@@ -98,14 +97,13 @@ mod tests {
         }
 
         curr = (n / prev + prev) / 2;
-        for _ in 0..20 {
+        loop {
             if curr - prev == zero {
-                break;
+                return Some(curr);
             }
             prev = curr;
             curr = (n / prev + prev) / 2;
         }
-        Some(curr)
     }
 
     #[test]
@@ -209,7 +207,7 @@ mod tests {
         let f = Fraction::new(i32::MAX, i32::MAX);
         assert_eq!(f, Fraction::new(1, 1));
 
-        let f = Fraction::new(i32::MIN + 1, i32::MIN + 1);
+        let f = Fraction::new(i32::MIN, i32::MIN);
         assert_eq!(f, Fraction::new(1, 1));
     }
 
@@ -275,14 +273,13 @@ mod tests {
             }
 
             curr = (n / prev + prev) / 2;
-            for _ in 0..20 {
+            loop {
                 if curr - prev == Fraction::ZERO {
                     return Some(curr);
                 }
                 prev = curr;
                 curr = (n / prev + prev) / 2;
             }
-            Some(curr)
         }
 
         assert_eq!(sqrt(Fraction::from(100)).unwrap(), Fraction::from(10));

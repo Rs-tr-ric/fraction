@@ -5,6 +5,8 @@ Rust实现的高精度分数类型，使用 `i32` 存储分子分母。支持数
 
 （初学 rust，个人练手）
 
+更新：使用 `i64` 存储分子分母的版本 [fraction64](https://github.com/Rs-tr-ric/fraction64)
+
 ---
 
 ### 🎯 核心功能
